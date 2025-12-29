@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Link Not Found</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="error-page">
+        <div class="error-content">
+            <div class="error-icon">🔍</div>
+            <h1 class="error-title">404</h1>
+            <h2 class="error-subtitle">Link Not Found</h2>
+            <p class="error-text">
+                The shortened URL you're looking for doesn't exist or has been deleted.
+            </p>
+            <div class="error-actions">
+                <a href="/" class="btn-primary">Go Home</a>
+                <a href="/dashboard" class="btn-outline">View Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .error-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        .error-content {
+            text-align: center;
+            color: white;
+        }
+        .error-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+        .error-title {
+            font-size: 120px;
+            font-weight: 700;
+            margin: 0;
+            line-height: 1;
+        }
+        .error-subtitle {
+            font-size: 32px;
+            margin: 10px 0;
+        }
+        .error-text {
+            font-size: 18px;
+            opacity: 0.9;
+            margin: 20px 0 40px;
+            max-width: 500px;
+        }
+        .error-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+    </style>
+</body>
+</html>
