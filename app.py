@@ -1,163 +1,158 @@
-from flask import Flask, render_template, request, redirect, jsonify, url_for
+from flask import Flask, render_template, request, redirect, jsonify
 import string
 import random
-import sqlite3
 from datetime import datetime
 import os
-import json
+from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# Database setup
-def init_db():
-    conn = sqlite3.connect('urls.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS urls
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  original_url TEXT NOT NULL,
-                  short_code TEXT UNIQUE NOT NULL,
-                  created_at TIMESTAMP,
-                  clicks INTEGER DEFAULT 0,
-                  last_clicked TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+# -------------------- MongoDB Setup --------------------
+MONGO_URI = os.environ.get("MONGO_URI")
+MONGO_DB_NAME = os.environ.get("MONGO_DB_NAME", "url_shortener")
 
+client = MongoClient(MONGO_URI)
+db = client[MONGO_DB_NAME]
+urls_collection = db.urls
+
+# Ensure unique short_code
+urls_collection.create_index("short_code", unique=True)
+
+# -------------------- Helpers --------------------
 def generate_short_code(length=6):
     characters = string.ascii_letters + string.digits
     while True:
         code = ''.join(random.choice(characters) for _ in range(length))
-        conn = sqlite3.connect('urls.db')
-        c = conn.cursor()
-        c.execute('SELECT short_code FROM urls WHERE short_code = ?', (code,))
-        if not c.fetchone():
-            conn.close()
+        if not urls_collection.find_one({"short_code": code}):
             return code
-        conn.close()
 
+# -------------------- Routes --------------------
 @app.route('/')
 def home():
     return render_template('index.html')
 
 @app.route('/dashboard')
 def dashboard():
-    conn = sqlite3.connect('urls.db')
-    c = conn.cursor()
-    c.execute('SELECT short_code, original_url, clicks, created_at, last_clicked FROM urls ORDER BY created_at DESC LIMIT 50')
-    urls = c.fetchall()
-    
-    c.execute('SELECT COUNT(*), SUM(clicks) FROM urls')
-    stats = c.fetchone()
-    conn.close()
-    
-    return render_template('dashboard.html', urls=urls, total_urls=stats[0] or 0, total_clicks=stats[1] or 0)
+    urls = list(
+        urls_collection.find(
+            {},
+            {"_id": 0, "short_code": 1, "original_url": 1, "clicks": 1, "created_at": 1, "last_clicked": 1}
+        )
+        .sort("created_at", -1)
+        .limit(50)
+    )
+
+    stats = urls_collection.aggregate([
+        {
+            "$group": {
+                "_id": None,
+                "total_urls": {"$sum": 1},
+                "total_clicks": {"$sum": "$clicks"}
+            }
+        }
+    ])
+
+    stats = next(stats, {"total_urls": 0, "total_clicks": 0})
+
+    return render_template(
+        'dashboard.html',
+        urls=[(
+            u["short_code"],
+            u["original_url"],
+            u.get("clicks", 0),
+            u.get("created_at"),
+            u.get("last_clicked")
+        ) for u in urls],
+        total_urls=stats["total_urls"],
+        total_clicks=stats["total_clicks"]
+    )
 
 @app.route('/api/shorten', methods=['POST'])
 def shorten_url():
     data = request.get_json()
     original_url = data.get('original_url', '').strip()
     custom_code = data.get('custom_code', '').strip()
-    
+
     if not original_url:
         return jsonify({'success': False, 'error': 'URL is required'}), 400
-    
+
     if not original_url.startswith(('http://', 'https://')):
         original_url = 'https://' + original_url
-    
-    conn = sqlite3.connect('urls.db')
-    c = conn.cursor()
-    
+
     if custom_code:
         if len(custom_code) < 3:
-            conn.close()
             return jsonify({'success': False, 'error': 'Custom code must be at least 3 characters'}), 400
-        
         if not custom_code.isalnum():
-            conn.close()
             return jsonify({'success': False, 'error': 'Custom code can only contain letters and numbers'}), 400
-        
-        c.execute('SELECT short_code FROM urls WHERE short_code = ?', (custom_code,))
-        if c.fetchone():
-            conn.close()
+        if urls_collection.find_one({"short_code": custom_code}):
             return jsonify({'success': False, 'error': 'Custom code already taken'}), 400
         short_code = custom_code
     else:
         short_code = generate_short_code()
-    
+
     created_at = datetime.now().isoformat()
+
     try:
-        c.execute('INSERT INTO urls (original_url, short_code, created_at) VALUES (?, ?, ?)',
-                  (original_url, short_code, created_at))
-        conn.commit()
-    except Exception as e:
-        conn.close()
-        return jsonify({'success': False, 'error': str(e)}), 500
-    
-    conn.close()
-    
-    short_url = request.host_url + short_code
-    
+        urls_collection.insert_one({
+            "original_url": original_url,
+            "short_code": short_code,
+            "created_at": created_at,
+            "clicks": 0,
+            "last_clicked": None
+        })
+    except DuplicateKeyError:
+        return jsonify({'success': False, 'error': 'Short code already exists'}), 400
+
     return jsonify({
         'success': True,
         'short_code': short_code,
-        'short_url': short_url,
+        'short_url': request.host_url + short_code,
         'original_url': original_url,
         'created_at': created_at
     })
 
 @app.route('/api/stats/<short_code>')
 def get_stats(short_code):
-    conn = sqlite3.connect('urls.db')
-    c = conn.cursor()
-    c.execute('SELECT original_url, clicks, created_at, last_clicked FROM urls WHERE short_code = ?', (short_code,))
-    result = c.fetchone()
-    conn.close()
-    
-    if result:
-        return jsonify({
-            'success': True,
-            'short_code': short_code,
-            'original_url': result[0],
-            'clicks': result[1],
-            'created_at': result[2],
-            'last_clicked': result[3]
-        })
-    
-    return jsonify({'success': False, 'error': 'URL not found'}), 404
+    url = urls_collection.find_one({"short_code": short_code})
+
+    if not url:
+        return jsonify({'success': False, 'error': 'URL not found'}), 404
+
+    return jsonify({
+        'success': True,
+        'short_code': short_code,
+        'original_url': url["original_url"],
+        'clicks': url.get("clicks", 0),
+        'created_at': url.get("created_at"),
+        'last_clicked': url.get("last_clicked")
+    })
 
 @app.route('/api/delete/<short_code>', methods=['DELETE'])
 def delete_url(short_code):
-    conn = sqlite3.connect('urls.db')
-    c = conn.cursor()
-    c.execute('DELETE FROM urls WHERE short_code = ?', (short_code,))
-    deleted = c.rowcount > 0
-    conn.commit()
-    conn.close()
-    
-    if deleted:
+    result = urls_collection.delete_one({"short_code": short_code})
+
+    if result.deleted_count:
         return jsonify({'success': True, 'message': 'URL deleted successfully'})
     return jsonify({'success': False, 'error': 'URL not found'}), 404
 
 @app.route('/<short_code>')
 def redirect_to_url(short_code):
-    conn = sqlite3.connect('urls.db')
-    c = conn.cursor()
-    
-    c.execute('SELECT original_url FROM urls WHERE short_code = ?', (short_code,))
-    result = c.fetchone()
-    
-    if result:
-        now = datetime.now().isoformat()
-        c.execute('UPDATE urls SET clicks = clicks + 1, last_clicked = ? WHERE short_code = ?', (now, short_code))
-        conn.commit()
-        conn.close()
-        return redirect(result[0])
-    
-    conn.close()
-    return render_template('404.html'), 404
+    url = urls_collection.find_one({"short_code": short_code})
 
+    if not url:
+        return render_template('404.html'), 404
+
+    now = datetime.now().isoformat()
+    urls_collection.update_one(
+        {"short_code": short_code},
+        {"$inc": {"clicks": 1}, "$set": {"last_clicked": now}}
+    )
+
+    return redirect(url["original_url"])
+
+# -------------------- Run --------------------
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
