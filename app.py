@@ -148,57 +148,62 @@ def dashboard():
 @app.route('/analytics/<short_code>')
 def analytics_page(short_code):
     """Detailed analytics page for a specific short URL"""
-    url_data = urls_collection.find_one({"short_code": short_code})
-    
-    if not url_data:
-        return render_template('404.html'), 404
-    
-    # Get all click analytics for this short code
-    clicks = list(analytics_collection.find({"short_code": short_code}).sort("timestamp", -1))
-    
-    # Aggregate analytics data
-    analytics_data = {
-        'total_clicks': len(clicks),
-        'unique_ips': len(set(c.get('ip_address') for c in clicks)),
-        'countries': {},
-        'cities': {},
-        'devices': {},
-        'browsers': {},
-        'os': {},
-        'referrers': {},
-        'recent_clicks': clicks[:20]  # Last 20 clicks
-    }
-    
-    for click in clicks:
-        # Country stats
-        country = click.get('location', {}).get('country', 'Unknown')
-        analytics_data['countries'][country] = analytics_data['countries'].get(country, 0) + 1
+    try:
+        url_data = urls_collection.find_one({"short_code": short_code})
         
-        # City stats
-        city = click.get('location', {}).get('city', 'Unknown')
-        analytics_data['cities'][city] = analytics_data['cities'].get(city, 0) + 1
+        if not url_data:
+            return render_template('404.html'), 404
         
-        # Device stats
-        device = click.get('device_info', {}).get('device_type', 'Unknown')
-        analytics_data['devices'][device] = analytics_data['devices'].get(device, 0) + 1
+        # Get all click analytics for this short code
+        clicks = list(analytics_collection.find({"short_code": short_code}).sort("timestamp", -1))
         
-        # Browser stats
-        browser = click.get('device_info', {}).get('browser', 'Unknown')
-        analytics_data['browsers'][browser] = analytics_data['browsers'].get(browser, 0) + 1
+        # Aggregate analytics data
+        analytics_data = {
+            'total_clicks': len(clicks),
+            'unique_ips': len(set(c.get('ip_address', 'unknown') for c in clicks if c.get('ip_address'))),
+            'countries': {},
+            'cities': {},
+            'devices': {},
+            'browsers': {},
+            'os': {},
+            'referrers': {},
+            'recent_clicks': clicks[:20]
+        }
         
-        # OS stats
-        os_name = click.get('device_info', {}).get('os', 'Unknown')
-        analytics_data['os'][os_name] = analytics_data['os'].get(os_name, 0) + 1
+        for click in clicks:
+            # Safely get nested data
+            location = click.get('location', {})
+            device_info = click.get('device_info', {})
+            
+            country = location.get('country', 'Unknown')
+            analytics_data['countries'][country] = analytics_data['countries'].get(country, 0) + 1
+            
+            city = location.get('city', 'Unknown')
+            analytics_data['cities'][city] = analytics_data['cities'].get(city, 0) + 1
+            
+            device = device_info.get('device_type', 'Unknown')
+            analytics_data['devices'][device] = analytics_data['devices'].get(device, 0) + 1
+            
+            browser = device_info.get('browser', 'Unknown')
+            analytics_data['browsers'][browser] = analytics_data['browsers'].get(browser, 0) + 1
+            
+            os_name = device_info.get('os', 'Unknown')
+            analytics_data['os'][os_name] = analytics_data['os'].get(os_name, 0) + 1
+            
+            referrer = click.get('referrer', 'Direct')
+            analytics_data['referrers'][referrer] = analytics_data['referrers'].get(referrer, 0) + 1
         
-        # Referrer stats
-        referrer = click.get('referrer', 'Direct')
-        analytics_data['referrers'][referrer] = analytics_data['referrers'].get(referrer, 0) + 1
+        return render_template(
+            'analytics.html',
+            url_data=url_data,
+            analytics=analytics_data
+        )
     
-    return render_template(
-        'analytics.html',
-        url_data=url_data,
-        analytics=analytics_data
-    )
+    except Exception as e:
+        print(f"Analytics Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error: {str(e)}", 500
 
 @app.route('/api/shorten', methods=['POST'])
 def shorten_url():

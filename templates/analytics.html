@@ -134,6 +134,24 @@
             align-items: center;
             gap: 5px;
         }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .empty-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        .empty-state h3 {
+            color: var(--primary);
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .empty-state p {
+            color: #666;
+            margin-bottom: 30px;
+        }
     </style>
 </head>
 <body>
@@ -169,6 +187,7 @@
                 </div>
             </div>
 
+            {% if analytics.total_clicks > 0 %}
             <!-- Summary Stats -->
             <div class="analytics-grid">
                 <div class="analytics-card">
@@ -190,29 +209,37 @@
                 <!-- Top Countries -->
                 <div class="analytics-card">
                     <h3>🌍 Top Countries</h3>
-                    {% for country, count in analytics.countries.items()|sort(attribute='1', reverse=True)|list[:5] %}
-                    <div class="stat-item">
-                        <span class="stat-label">{{ country }}</span>
-                        <span class="stat-value">{{ count }}</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ (count / analytics.total_clicks * 100)|int }}%"></div>
-                    </div>
-                    {% endfor %}
+                    {% if analytics.countries %}
+                        {% for country, count in (analytics.countries.items()|list|sort(attribute='1', reverse=True))[:5] %}
+                        <div class="stat-item">
+                            <span class="stat-label">{{ country }}</span>
+                            <span class="stat-value">{{ count }}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {{ (count / analytics.total_clicks * 100)|int }}%"></div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p style="color: #666; text-align: center;">No data yet</p>
+                    {% endif %}
                 </div>
 
                 <!-- Devices -->
                 <div class="analytics-card">
                     <h3>📱 Devices</h3>
-                    {% for device, count in analytics.devices.items()|sort(attribute='1', reverse=True) %}
-                    <div class="stat-item">
-                        <span class="stat-label">{{ device }}</span>
-                        <span class="stat-value">{{ count }}</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ (count / analytics.total_clicks * 100)|int }}%"></div>
-                    </div>
-                    {% endfor %}
+                    {% if analytics.devices %}
+                        {% for device, count in (analytics.devices.items()|list|sort(attribute='1', reverse=True)) %}
+                        <div class="stat-item">
+                            <span class="stat-label">{{ device }}</span>
+                            <span class="stat-value">{{ count }}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {{ (count / analytics.total_clicks * 100)|int }}%"></div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p style="color: #666; text-align: center;">No data yet</p>
+                    {% endif %}
                 </div>
             </div>
 
@@ -220,55 +247,82 @@
             <div class="analytics-grid">
                 <div class="analytics-card">
                     <h3>🌐 Browsers</h3>
-                    {% for browser, count in analytics.browsers.items()|sort(attribute='1', reverse=True)|list[:5] %}
-                    <div class="stat-item">
-                        <span class="stat-label">{{ browser }}</span>
-                        <span class="stat-value">{{ count }}</span>
-                    </div>
-                    {% endfor %}
+                    {% if analytics.browsers %}
+                        {% for browser, count in (analytics.browsers.items()|list|sort(attribute='1', reverse=True))[:5] %}
+                        <div class="stat-item">
+                            <span class="stat-label">{{ browser }}</span>
+                            <span class="stat-value">{{ count }}</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p style="color: #666; text-align: center;">No data yet</p>
+                    {% endif %}
                 </div>
 
                 <div class="analytics-card">
                     <h3>💻 Operating Systems</h3>
-                    {% for os, count in analytics.os.items()|sort(attribute='1', reverse=True)|list[:5] %}
-                    <div class="stat-item">
-                        <span class="stat-label">{{ os }}</span>
-                        <span class="stat-value">{{ count }}</span>
-                    </div>
-                    {% endfor %}
+                    {% if analytics.os %}
+                        {% for os, count in (analytics.os.items()|list|sort(attribute='1', reverse=True))[:5] %}
+                        <div class="stat-item">
+                            <span class="stat-label">{{ os }}</span>
+                            <span class="stat-value">{{ count }}</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p style="color: #666; text-align: center;">No data yet</p>
+                    {% endif %}
                 </div>
             </div>
 
             <!-- Recent Clicks -->
             <div class="analytics-card">
                 <h3>🕒 Recent Clicks (Last 20)</h3>
-                {% for click in analytics.recent_clicks %}
-                <div class="click-entry">
-                    <div class="click-header">
-                        <div class="click-location">
-                            🌍 {{ click.location.city }}, {{ click.location.country }}
+                {% if analytics.recent_clicks %}
+                    {% for click in analytics.recent_clicks %}
+                    <div class="click-entry">
+                        <div class="click-header">
+                            <div class="click-location">
+                                🌍 {{ click.location.get('city', 'Unknown') }}, {{ click.location.get('country', 'Unknown') }}
+                            </div>
+                            <div class="click-time">
+                                {{ click.timestamp[:19].replace('T', ' ') }}
+                            </div>
                         </div>
-                        <div class="click-time">
-                            {{ click.timestamp[:19].replace('T', ' ') }}
+                        <div class="click-details">
+                            <div class="detail-badge">
+                                📱 {{ click.device_info.get('device_type', 'Unknown') }}
+                            </div>
+                            <div class="detail-badge">
+                                🌐 {{ click.device_info.get('browser', 'Unknown') }}
+                            </div>
+                            <div class="detail-badge">
+                                💻 {{ click.device_info.get('os', 'Unknown') }}
+                            </div>
+                            <div class="detail-badge">
+                                🔗 {% if click.referrer and click.referrer != 'Direct' %}{{ click.referrer[:30] }}{% else %}Direct Visit{% endif %}
+                            </div>
                         </div>
                     </div>
-                    <div class="click-details">
-                        <div class="detail-badge">
-                            📱 {{ click.device_info.device_type }}
-                        </div>
-                        <div class="detail-badge">
-                            🌐 {{ click.device_info.browser }}
-                        </div>
-                        <div class="detail-badge">
-                            💻 {{ click.device_info.os }}
-                        </div>
-                        <div class="detail-badge">
-                            🔗 {{ click.referrer if click.referrer != 'Direct' else 'Direct Visit' }}
-                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="color: #666; text-align: center; padding: 20px;">No clicks yet</p>
+                {% endif %}
+            </div>
+
+            {% else %}
+            <!-- No Data State -->
+            <div class="analytics-card">
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <h3>No Analytics Data Yet</h3>
+                    <p>This link hasn't been clicked yet. Share it to start collecting data!</p>
+                    <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                        <button onclick="copyUrl()" class="btn-primary">Copy Link</button>
+                        <a href="/dashboard" class="btn-outline">Back to Dashboard</a>
                     </div>
                 </div>
-                {% endfor %}
             </div>
+            {% endif %}
         </div>
     </section>
 
@@ -277,5 +331,16 @@
             <p>&copy; 2024 ShortLink. Made with ❤️ using Flask</p>
         </div>
     </footer>
+
+    <script>
+        function copyUrl() {
+            const url = '{{ request.host_url }}{{ url_data.short_code }}';
+            navigator.clipboard.writeText(url).then(() => {
+                alert('Link copied to clipboard! 📋');
+            }).catch(() => {
+                prompt('Copy this link:', url);
+            });
+        }
+    </script>
 </body>
 </html>
